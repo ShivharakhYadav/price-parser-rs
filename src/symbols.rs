@@ -185,6 +185,64 @@ pub fn other_currency_regex() -> &'static Regex {
     &RE
 }
 
+/// Guess the currency symbol from a price string and an optional hint.
+///
+/// `currency_hint` is any nearby text that might name the currency, such as a
+/// neighbouring element scraped from a page. A symbol found in `price` is
+/// preferred over one found in the hint.
+///
+/// Candidates are tried in this order, stopping at the first hit:
+///
+/// 1. dollar code in `price`, if `price` contains a `$`
+/// 2. dollar code in `currency_hint`, if the hint contains a `$`
+/// 3. safe symbol in `price`
+/// 4. safe symbol in `currency_hint`
+/// 5. loose symbol in `price`
+/// 6. loose symbol in `currency_hint`
+///
+/// The two dollar-code passes come first so that `SGD$99` resolves to `SGD`
+/// rather than the less specific `$` beside it. Upstream builds the same
+/// sequence by inserting the hint pass at the front of its method list and then
+/// the price pass at the front again.
+///
+/// # Empty versus blank
+///
+/// An empty string is skipped, but a blank one is not: upstream guards with a
+/// plain truthiness test, under which `""` is falsy while `"  "` is truthy and
+/// still gets searched. It finds nothing either way, but the distinction is
+/// preserved rather than tidied up.
+///
+/// # Trailing and leading whitespace
+///
+/// The returned slice is **not** trimmed. Upstream stores at least one safe
+/// symbol with a leading space (`" تومان"`), so a match can carry it, and the
+/// caller strips the result -- as `Price::fromstring` will.
+pub fn extract_currency_symbol<'a>(
+    price: Option<&'a str>,
+    currency_hint: Option<&'a str>,
+) -> Option<&'a str> {
+    let price = price.filter(|s| !s.is_empty());
+    let hint = currency_hint.filter(|s| !s.is_empty());
+
+    for value in [price, hint] {
+        if let Some(text) = value.filter(|s| s.contains('$')) {
+            if let Some(code) = find_dollar_code(text) {
+                return Some(code);
+            }
+        }
+    }
+
+    for regex in [safe_currency_regex(), other_currency_regex()] {
+        for text in [price, hint].into_iter().flatten() {
+            if let Some(m) = regex.find(text) {
+                return Some(m.as_str());
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -357,6 +415,77 @@ mod tests {
         // and the second sits mid-run with no boundary before it. Upstream
         // returns None, and splitting the lookahead out must not change that.
         assert_eq!(find_dollar_code("USDUSD "), None);
+    }
+
+    /// Every expectation here came from running upstream's
+    /// `extract_currency_symbol()` on the same arguments.
+    #[test]
+    fn extraction_matches_upstream() {
+        let cases: &[(Option<&str>, Option<&str>, Option<&str>)] = &[
+            (Some("$100"), None, Some("$")),
+            (Some("100"), Some("$"), Some("$")),
+            (Some("USD 100"), None, Some("USD")),
+            (Some("NZD $100"), None, Some("NZD")),
+            (Some("100"), Some("NZD $"), Some("NZD")),
+            (Some("SGD$99"), None, Some("SGD")),
+            (Some(""), Some("$"), Some("$")),
+            (None, None, None),
+            (Some("100 руб."), None, Some("руб.")),
+            (Some("100"), Some("EUR"), Some("EUR")),
+            (Some("100"), Some("€"), Some("€")),
+            (Some("no currency here"), None, None),
+            (Some("тумен"), None, None),
+            (Some("1000 lei"), None, Some("lei")),
+            (Some("R$ 50"), None, Some("R$")),
+            (Some("50 zł"), None, Some("zł")),
+            // Placeholders and bare capitals stay excluded.
+            (Some("XXX 5"), None, None),
+            (Some("Q 5"), None, None),
+        ];
+        for (price, hint, expected) in cases {
+            assert_eq!(
+                extract_currency_symbol(*price, *hint),
+                *expected,
+                "for price={price:?} hint={hint:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn price_outranks_hint_within_a_tier() {
+        // Both carry a safe symbol; the one in `price` wins.
+        assert_eq!(extract_currency_symbol(Some("€100"), Some("$")), Some("€"));
+        // The hint holds a `$`, so a dollar-code pass runs first -- but "$"
+        // contains no code, so the safe symbol in `price` still wins.
+        assert_eq!(
+            extract_currency_symbol(Some("100 CHF"), Some("$")),
+            Some("CHF")
+        );
+        // A safe symbol in the hint beats a loose one in the price.
+        assert_eq!(
+            extract_currency_symbol(Some("A$ 5"), Some("US$")),
+            Some("A$")
+        );
+    }
+
+    #[test]
+    fn empty_is_skipped_but_blank_is_searched() {
+        // Upstream guards with a truthiness test: "" is falsy, "  " is not.
+        // Both yield None here, but for different reasons, and the distinction
+        // is preserved rather than collapsed.
+        assert_eq!(extract_currency_symbol(Some(""), Some("$")), Some("$"));
+        assert_eq!(extract_currency_symbol(Some("5"), Some("  ")), None);
+    }
+
+    #[test]
+    fn result_is_not_trimmed() {
+        // Upstream stores this safe symbol with a leading space, so the match
+        // carries one. Trimming is the caller's job -- doing it here would
+        // diverge from upstream and mask the behaviour.
+        assert_eq!(
+            extract_currency_symbol(Some("100 تومان"), None),
+            Some(" تومان")
+        );
     }
 
     #[test]
