@@ -112,6 +112,67 @@ pub fn other_currency_symbols() -> &'static [&'static str] {
     &SYMBOLS
 }
 
+/// Currency codes ending in `D`, such as `NZD`, `SGD` and `USD`.
+///
+/// The trailing `D` stands for "dollar", so a code like `SGD$123` names the
+/// currency more precisely than the bare `$` beside it and should win.
+pub fn dollar_codes() -> &'static [&'static str] {
+    static CODES: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+        CURRENCY_CODES
+            .iter()
+            .copied()
+            .filter(|code| code.ends_with('D'))
+            .collect()
+    });
+    &CODES
+}
+
+/// Matches a dollar code at a word boundary, without the trailing condition.
+fn dollar_code_regex() -> &'static Regex {
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
+        let alternation = dollar_codes()
+            .iter()
+            .map(|code| regex::escape(code))
+            .collect::<Vec<_>>()
+            .join("|");
+        Regex::new(&format!(r"\b(?:{alternation})")).expect("dollar code alternation must compile")
+    });
+    &RE
+}
+
+/// The condition upstream expresses as a lookahead, applied to what follows a
+/// candidate code: an optional `$`, then a non-letter or the end of the text.
+fn dollar_follower_regex() -> &'static Regex {
+    static RE: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^\$?(?:[\W\d]|$)").expect("follower pattern must compile"));
+    &RE
+}
+
+/// Find a dollar-style currency code, e.g. the `NZD` in `"NZD $123"`.
+///
+/// Upstream writes this as one regex ending in a lookahead:
+///
+/// ```text
+/// \b(?:NZD|SGD|...)(?=\$?(?:[\W\d]|$))
+/// ```
+///
+/// Rust's `regex` crate has no lookaround, so the assertion is split out: find
+/// a code at a word boundary, then test the text after it against an anchored
+/// pattern. Because the check is a separate step rather than part of the
+/// match, a rejected candidate must not end the search -- scanning continues,
+/// which is what the lookahead form does implicitly.
+///
+/// The `\b` matters more than it looks. In `"USDUSD "` the first `USD` is
+/// rejected (a letter follows) and the second cannot match at all, since there
+/// is no word boundary mid-run. Upstream returns nothing here, and so does
+/// this.
+pub fn find_dollar_code(text: &str) -> Option<&str> {
+    dollar_code_regex()
+        .find_iter(text)
+        .find(|m| dollar_follower_regex().is_match(&text[m.end()..]))
+        .map(|m| m.as_str())
+}
+
 /// Matcher for the safe tier, in upstream's hand-ordered sequence.
 pub fn safe_currency_regex() -> &'static Regex {
     static RE: LazyLock<Regex> = LazyLock::new(|| or_regex(SAFE_CURRENCY_SYMBOLS));
@@ -237,6 +298,65 @@ mod tests {
         // this implementation came back identical. Pinned so a change to the
         // set arithmetic, the exclusions, or the generated tables is caught.
         assert_eq!(other_currency_symbols().len(), 300);
+    }
+
+    #[test]
+    fn dollar_code_table_matches_upstream() {
+        // Upstream's DOLLAR_CODES holds 43 entries at revision 64e213a.
+        assert_eq!(dollar_codes().len(), 43);
+        for code in ["USD", "NZD", "SGD", "CAD", "AUD", "AED"] {
+            assert!(dollar_codes().contains(&code), "{code} missing");
+        }
+        assert!(
+            dollar_codes().iter().all(|c| c.ends_with('D')),
+            "every dollar code must end in D"
+        );
+    }
+
+    #[test]
+    fn dollar_code_matches_upstream_behaviour() {
+        // Every expectation below was produced by running upstream's
+        // _DOLLAR_REGEX.search() on the same input.
+        let cases: &[(&str, Option<&str>)] = &[
+            ("NZD $123", Some("NZD")),
+            ("SGD$123", Some("SGD")),
+            ("NZD", Some("NZD")),
+            ("NZD100", Some("NZD")),
+            ("NZD-5", Some("NZD")),
+            ("NZD$", Some("NZD")),
+            ("AED", Some("AED")),
+            ("CAD\n", Some("CAD")),
+            ("price: 100 CAD", Some("CAD")),
+            ("USD USD", Some("USD")),
+            // A letter, or an underscore, disqualifies the candidate.
+            ("NZDX", None),
+            ("NZD_", None),
+            ("NZDa", None),
+            // No word boundary before the code.
+            ("xNZD $1", None),
+            // Lowercase codes are not in the table.
+            ("usd 5", None),
+            ("$100", None),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(find_dollar_code(input), *expected, "for input {input:?}");
+        }
+    }
+
+    #[test]
+    fn rejected_candidate_does_not_stop_the_search() {
+        // The lookahead form retries at later positions automatically; the
+        // split form has to do it explicitly. Upstream yields AUD at span
+        // (5, 8) here.
+        assert_eq!(find_dollar_code("NZDX AUD"), Some("AUD"));
+    }
+
+    #[test]
+    fn word_boundary_blocks_a_code_inside_a_letter_run() {
+        // "USDUSD ": the first USD is followed by a letter so it is rejected,
+        // and the second sits mid-run with no boundary before it. Upstream
+        // returns None, and splitting the lookahead out must not change that.
+        assert_eq!(find_dollar_code("USDUSD "), None);
     }
 
     #[test]
