@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Generate ``src/currencies.rs`` from the upstream ``_currencies.py``.
+"""Generate ``src/currencies.rs`` from the upstream package.
 
-The upstream project carries ~1,700 lines of currency data. Transcribing that
-by hand would be slow and quietly error-prone, so it is generated instead and
-this script is committed alongside its output as the record of how.
+The upstream project carries ~1,700 lines of currency data in
+``_currencies.py``, plus a hand-ordered 126-entry ``SAFE_CURRENCY_SYMBOLS``
+list in ``parser.py``. Transcribing either by hand would be slow and quietly
+error-prone -- 89 of those 126 entries are non-ASCII and 16 carry an invisible
+U+200F RIGHT-TO-LEFT MARK -- so both are generated instead, and this script is
+committed alongside its output as the record of how.
+
+Only literal data is generated. The logic that consumes it (set arithmetic,
+length ordering, regex construction) is written by hand in ``src/symbols.rs``.
 
 Usage::
 
-    python tools/gen_currencies.py --source path/to/price_parser/_currencies.py
+    python tools/gen_currencies.py --upstream path/to/price_parser
 
 Obtain the upstream source at the pinned revision with::
 
@@ -30,6 +36,7 @@ the same position. Length precedence is applied separately in ``symbols.rs``.
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import shutil
 import subprocess
@@ -50,6 +57,24 @@ def load_upstream(source: Path):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def extract_list_literal(source: Path, name: str) -> list[str]:
+    """Pull a module-level list-of-str literal out of a Python file.
+
+    Read with ``ast`` rather than by importing, so no upstream dependency
+    (``attrs``) has to be installed and no module-level code runs.
+    """
+    tree = ast.parse(source.read_text(encoding="utf-8"))
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and any(
+            getattr(t, "id", None) == name for t in node.targets
+        ):
+            return ast.literal_eval(node.value)
+        if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", None) == name:
+            if node.value is not None:
+                return ast.literal_eval(node.value)
+    raise SystemExit(f"could not find {name} in {source}")
 
 
 def rust_str(value: str) -> str:
@@ -114,10 +139,10 @@ def upstream_revision(source: Path) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--source",
+        "--upstream",
         type=Path,
         required=True,
-        help="path to upstream price_parser/_currencies.py",
+        help="path to the upstream price_parser package directory",
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument(
@@ -127,15 +152,21 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if not args.source.is_file():
-        print(f"upstream source not found: {args.source}")
+    currencies_py = args.upstream / "_currencies.py"
+    parser_py = args.upstream / "parser.py"
+    missing = [p for p in (currencies_py, parser_py) if not p.is_file()]
+    if missing:
+        for p in missing:
+            print(f"upstream source not found: {p}")
         print("\nclone it at the pinned revision:")
         print("  git clone https://github.com/scrapinghub/price-parser")
         print(f"  git -C price-parser checkout {UPSTREAM_PIN}")
+        print("  python tools/gen_currencies.py --upstream price-parser/price_parser")
         return 1
 
-    upstream = load_upstream(args.source)
-    rev = upstream_revision(args.source)
+    upstream = load_upstream(currencies_py)
+    rev = upstream_revision(currencies_py)
+    safe = extract_list_literal(parser_py, "SAFE_CURRENCY_SYMBOLS")
 
     # Dict key order, which is insertion order and already deterministic.
     codes = list(upstream.CURRENCY_CODES)
@@ -163,6 +194,14 @@ def main() -> int:
 
 """
 
+    safe_doc = (
+        "Symbols treated as unambiguous currency indicators wherever they "
+        "appear.\n///\n/// Upstream hand-orders this list and the order is "
+        "load-bearing: multi-character\n/// variants such as `US$` and `CA$` "
+        "must be tried before bare `$`, or the\n/// wrong symbol wins. "
+        "Reproduced exactly as upstream declares it."
+    )
+
     parts = [
         header,
         render_array(
@@ -180,6 +219,8 @@ def main() -> int:
             "National currency symbols and alternates, sorted for determinism.",
             national,
         ),
+        "\n",
+        render_array("SAFE_CURRENCY_SYMBOLS", safe_doc, safe),
     ]
     generated = "".join(parts)
 
@@ -213,6 +254,7 @@ def main() -> int:
     print(f"  CURRENCY_CODES           : {len(codes)}")
     print(f"  CURRENCY_SYMBOLS         : {len(symbols)}")
     print(f"  CURRENCY_NATIONAL_SYMBOLS: {len(national)}")
+    print(f"  SAFE_CURRENCY_SYMBOLS    : {len(safe)}")
     if not formatted:
         print("  (rustfmt not found; output left unformatted)")
     return 0

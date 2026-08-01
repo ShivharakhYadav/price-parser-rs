@@ -2,7 +2,9 @@
 name = "price-parser-rs"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.74"
+# 1.80 for std::sync::LazyLock, used to build the symbol tables once on first
+# use rather than taking a third-party lazy-init dependency.
+rust-version = "1.80"
 description = "Extract price amount and currency from a raw text string. A Rust port of scrapinghub/price-parser."
 repository = "https://github.com/ShivharakhYadav/price-parser-rs"
 license = "BSD-3-Clause"

@@ -24,6 +24,7 @@
 #![warn(missing_docs)]
 
 pub mod currencies;
+pub mod symbols;
 
 #[cfg(feature = "python")]
 mod python;
