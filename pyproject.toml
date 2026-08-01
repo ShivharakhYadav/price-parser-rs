@@ -1,0 +1,28 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+# Deliberately the same import name as the upstream package: the vendored
+# original tests do `from price_parser import Price`, and they run unmodified.
+name = "price-parser"
+version = "0.1.0"
+description = "Extract price amount and currency from a raw text string (Rust port)."
+readme = "README.md"
+license = "BSD-3-Clause"
+requires-python = ">=3.9"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+]
+
+[project.urls]
+Homepage = "https://github.com/ShivharakhYadav/price-parser-rs"
+Source = "https://github.com/ShivharakhYadav/price-parser-rs"
+
+[tool.maturin]
+module-name = "price_parser"
+features = ["pyo3/extension-module", "python"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/original"]

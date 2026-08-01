@@ -1,0 +1,36 @@
+[package]
+name = "price-parser-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.74"
+description = "Extract price amount and currency from a raw text string. A Rust port of scrapinghub/price-parser."
+repository = "https://github.com/ShivharakhYadav/price-parser-rs"
+license = "BSD-3-Clause"
+readme = "README.md"
+keywords = ["price", "currency", "parser", "scraping", "decimal"]
+categories = ["parser-implementations", "text-processing"]
+
+[lib]
+name = "price_parser"
+# cdylib: the native Python extension module built by maturin.
+# rlib:   lets `cargo test` and downstream Rust crates use the pure core.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+regex = "1"
+rust_decimal = "1"
+
+[dependencies.pyo3]
+version = "0.23"
+optional = true
+features = ["extension-module"]
+
+[features]
+# Enabled by maturin when building the Python module. The core stays
+# PyO3-free so it is usable, and testable, as an ordinary Rust crate.
+default = []
+python = ["dep:pyo3"]
+
+[profile.release]
+lto = true
+codegen-units = 1
