@@ -23,5 +23,7 @@
 #![cfg_attr(not(feature = "python"), forbid(unsafe_code))]
 #![warn(missing_docs)]
 
+pub mod currencies;
+
 #[cfg(feature = "python")]
 mod python;
