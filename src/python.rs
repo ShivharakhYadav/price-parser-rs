@@ -264,6 +264,23 @@ fn price_parser(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "Rust port of scrapinghub/price-parser.")?;
     m.add_class::<PyPrice>()?;
     m.add_function(wrap_pyfunction!(parse_price, m)?)?;
+
+    // Which profile this was compiled with. `maturin develop` defaults to
+    // debug, which is roughly twenty times slower and makes any benchmark
+    // meaningless -- so tools/bench.py reads this and refuses to report
+    // numbers from a debug build rather than quietly publishing them.
+    m.add(
+        "__build__",
+        if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        },
+    )?;
+
+    // Set last, deliberately. PyO3 appends each subsequently added name to an
+    // existing __all__, so declaring it earlier leaks __build__ into the public
+    // export list and it stops matching upstream's.
     m.add("__all__", vec!["Price", "parse_price"])?;
     Ok(())
 }

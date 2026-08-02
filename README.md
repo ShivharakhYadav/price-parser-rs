@@ -47,6 +47,41 @@ and upstream's answers produced from one place so both implementations see ident
 Each is reproducible via the programs in [`examples/`](examples/), which exit non-zero on any
 disagreement.
 
+## Performance
+
+Roughly **4× faster** than the Python original, over the same 1,178 real price
+strings from the frozen suite.
+
+| implementation | per price | prices/sec | speedup |
+|---|---:|---:|---:|
+| upstream Python | ~32 µs | ~31,000 | 1.0× |
+| this port, from Python | ~8 µs | ~127,000 | ~4× |
+| this port, native Rust | ~7 µs | ~146,000 | ~4× |
+
+Reproduce with `python tools/bench.py --upstream ../price-parser`.
+
+Read these as approximate, and the table above as a representative sample
+rather than a precise result. Across repeated runs the Python-facing speedup
+sat in the 3.6–4.7× band, while the native figure swung from 2.3× to 6.1× — so
+the two Rust paths cannot be told apart on this hardware. The FFI overhead is
+real but smaller than the machine's jitter. The Python baseline was the steady
+one, at about ±5%.
+
+The honest summary is **around 4×**, not a precise multiple. Anyone wanting a
+firm number should re-run on a quiet machine.
+
+Methodology is identical on both sides: same corpus, a warmup pass, then the
+best of five rounds of sixty passes each. Best rather than mean, because the
+fastest observed run is the least polluted by scheduling noise, and taking it
+on both sides keeps the bias pointing the same way. Rounds are long
+deliberately — a single pass takes a few milliseconds and timing that produced
+a table where the FFI path appeared faster than the native call it wraps.
+
+The extension module reports its own build profile as `price_parser.__build__`,
+and the benchmark refuses to run against a debug build. `maturin develop`
+defaults to debug, which is around twenty times slower and made this port look
+five times *slower* than Python the first time it was measured.
+
 ## Rust API
 
 ```rust
