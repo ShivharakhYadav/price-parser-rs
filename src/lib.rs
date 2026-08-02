@@ -24,6 +24,7 @@
 #![warn(missing_docs)]
 
 pub mod currencies;
+pub mod digits;
 pub mod number;
 pub mod price;
 pub mod symbols;

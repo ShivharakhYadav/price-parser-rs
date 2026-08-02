@@ -6,6 +6,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 use rust_decimal::Decimal;
 
+use crate::digits::fold_decimal_digits;
+
 /// Matches a decimal separator and the digits trailing it.
 ///
 /// ```text
@@ -141,7 +143,14 @@ pub fn parse_number(num: &str, decimal_separator: Option<char>) -> Option<Decima
             .collect(),
     };
 
-    Decimal::from_str(&normalised).ok()
+    // Python's Decimal takes any Unicode decimal digit, so Decimal("٥") is 5.
+    // rust_decimal takes only ASCII, so fold the rest down first -- without
+    // this, a price written in Arabic-Indic or Devanagari numerals silently
+    // parses as nothing. Found by the differential fuzzer, not the suite.
+    match fold_decimal_digits(&normalised) {
+        Some(folded) => Decimal::from_str(&folded).ok(),
+        None => Decimal::from_str(&normalised).ok(),
+    }
 }
 
 #[cfg(test)]
@@ -340,6 +349,25 @@ mod tests {
         // so no special handling is needed. Pinned because it is easy to assume
         // otherwise.
         assert_eq!(parse_number("1_000", None), dec("1000"));
+    }
+
+    #[test]
+    fn non_ascii_digits_parse_like_python() {
+        // Python's Decimal accepts any Unicode decimal digit. Verified against
+        // upstream: parse_number("٥") is Decimal('5') there too.
+        //
+        // Found by the differential fuzzer rather than the suite, whose corpus
+        // is real-world scraped text and effectively all ASCII. It is a genuine
+        // case for a price parser though -- these numerals are ordinary on
+        // Arabic, Persian, Hindi and Bengali storefronts.
+        assert_eq!(parse_number("٥", None), dec("5")); // Arabic-Indic
+        assert_eq!(parse_number("੨", None), dec("2")); // Gurmukhi
+        assert_eq!(parse_number("៧", None), dec("7")); // Khmer
+        assert_eq!(parse_number("০", None), dec("0")); // Bengali
+        assert_eq!(parse_number("٥٠", None), dec("50"));
+        // Mixed with ASCII separators, as real text would be.
+        assert_eq!(parse_number("١٢.٣٤", None), dec("12.34"));
+        assert_eq!(parse_number("١,٢٣٤", None), dec("1234"));
     }
 
     #[test]

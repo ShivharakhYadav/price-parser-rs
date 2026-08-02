@@ -14,6 +14,10 @@ __pycache__/
 build/
 dist/
 
+# Fuzzer tables. Removed automatically on success and kept only when a run
+# fails, so they can be replayed -- never committed either way.
+fuzz-*.tsv
+
 # Editors / OS
 .vscode/
 .idea/
