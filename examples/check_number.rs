@@ -13,7 +13,7 @@
 
 use std::process::ExitCode;
 
-use price_parser::number::get_decimal_separator;
+use price_parser::number::{get_decimal_separator, parse_number};
 
 const NONE: &str = "\\N";
 
@@ -45,15 +45,25 @@ fn run(which: &str, path: &str) -> Result<(usize, usize), String> {
 
     let (mut total, mut mismatches) = (0usize, 0usize);
     for line in text.lines().filter(|l| !l.is_empty()) {
-        let (raw_input, raw_expected) = line
-            .split_once('\t')
-            .ok_or_else(|| format!("malformed line: {line:?}"))?;
-        let input = unescape(raw_input);
+        let fields: Vec<&str> = line.split('\t').collect();
+        let input = unescape(fields.first().unwrap_or(&""));
 
         let (got, expected) = match which {
             "decimal-separator" => {
+                let [_, raw_expected] = fields.as_slice() else {
+                    return Err(format!("malformed line: {line:?}"));
+                };
                 let got = get_decimal_separator(&input).map(|c| c.to_string());
-                let expected = (raw_expected != NONE).then(|| raw_expected.to_string());
+                let expected = (*raw_expected != NONE).then(|| raw_expected.to_string());
+                (got, expected)
+            }
+            "parse-number" => {
+                let [_, raw_sep, raw_expected] = fields.as_slice() else {
+                    return Err(format!("malformed line: {line:?}"));
+                };
+                let separator = (*raw_sep != NONE).then(|| raw_sep.chars().next()).flatten();
+                let got = parse_number(&input, separator).map(|d| d.to_string());
+                let expected = (*raw_expected != NONE).then(|| raw_expected.to_string());
                 (got, expected)
             }
             other => return Err(format!("unknown check: {other}")),
