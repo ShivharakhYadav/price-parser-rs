@@ -24,6 +24,24 @@ Source = "https://github.com/ShivharakhYadav/price-parser-rs"
 module-name = "price_parser"
 features = ["pyo3/extension-module", "python"]
 
+# Ship PEP 561 type information, as upstream does.
+#
+# The implementation is Rust, so there are no inline annotations for a type
+# checker to read, and without these a drop-in replacement would silently lose
+# the typing upstream's py.typed package provides.
+#
+# Added via `include` rather than by switching maturin to a mixed layout. A
+# mixed layout would replace maturin's generated __init__.py shim with one of
+# ours, changing how the module is imported -- and the vendored suite depends
+# on that import working exactly as it does now. `include` preserves the source
+# path, so price_parser/ here lands as price_parser/ in the wheel, leaving the
+# generated shim untouched. The directory holds no __init__.py precisely so
+# maturin does not mistake it for a mixed-layout package.
+include = [
+    { path = "price_parser/__init__.pyi", format = "wheel" },
+    { path = "price_parser/py.typed", format = "wheel" },
+]
+
 [tool.pytest.ini_options]
 # tests/original holds the upstream suite, byte-for-byte and never edited. It
 # runs against the Rust implementation through the extension module, which is

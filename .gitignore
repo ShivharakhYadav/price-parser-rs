@@ -9,6 +9,8 @@ __pycache__/
 *.py[cod]
 *.so
 *.pyd
+# MSVC debug symbols, which maturin drops next to the built module on Windows.
+*.pdb
 .pytest_cache/
 *.egg-info/
 build/
