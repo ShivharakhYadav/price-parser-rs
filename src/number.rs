@@ -65,7 +65,7 @@ pub fn get_decimal_separator(price: &str) -> Option<char> {
 /// file, group, record and unit separators. Upstream calls `.strip()`, so
 /// `"\x1c1.5"` parses to `1.5` there; plain `trim()` would leave the control
 /// character in place and fail.
-fn is_python_whitespace(c: char) -> bool {
+pub(crate) fn is_python_whitespace(c: char) -> bool {
     c.is_whitespace() || matches!(c, '\u{1c}'..='\u{1f}')
 }
 

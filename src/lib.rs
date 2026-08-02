@@ -29,7 +29,7 @@ pub mod price;
 pub mod symbols;
 pub mod text;
 
-pub use price::Price;
+pub use price::{parse_price, Price};
 
 #[cfg(feature = "python")]
 mod python;
