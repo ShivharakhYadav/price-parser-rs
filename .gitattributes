@@ -1,0 +1,9 @@
+# Line endings are normalised to LF in the repository and on checkout, so
+# generated files re-derived on Linux match what was committed from Windows.
+* text=auto eol=lf
+
+# ...except the vendored upstream tests, which are never normalised, never
+# converted, and never touched. Their SHA-256 is the evidence that this port
+# runs the original suite unmodified, and a line-ending conversion on checkout
+# would change those hashes and invalidate the claim.
+tests/original/** -text

@@ -1,0 +1,7 @@
+# Unix line endings everywhere, not the platform default.
+#
+# Generated files are re-derived in CI and compared against what is committed.
+# With the default `Auto`, a file generated on Windows keeps CRLF while the same
+# file generated on Linux gets LF, and the comparison fails for a reason that
+# has nothing to do with its contents.
+newline_style = "Unix"

@@ -112,7 +112,10 @@ def main() -> int:
     if args.check:
         current = args.output.read_text(encoding="utf-8") if args.output.exists() else ""
         tmp = args.output.with_suffix(".rs.check")
-        tmp.write_text(generated, encoding="utf-8")
+        # newline="\n" explicitly: the default translates to CRLF on Windows,
+        # so the same input would produce a different file per platform and the
+        # check below would fail for reasons unrelated to its contents.
+        tmp.write_text(generated, encoding="utf-8", newline="\n")
         try:
             if shutil.which("rustfmt"):
                 subprocess.run(["rustfmt", "--edition", "2021", str(tmp)], check=True,
@@ -126,7 +129,7 @@ def main() -> int:
         print(f"{args.output.relative_to(REPO_ROOT)} is up to date")
         return 0
 
-    args.output.write_text(generated, encoding="utf-8")
+    args.output.write_text(generated, encoding="utf-8", newline="\n")
     if shutil.which("rustfmt"):
         subprocess.run(["rustfmt", "--edition", "2021", str(args.output)], check=True,
                        capture_output=True)

@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # The upstream revision every generated file and vendored test is pinned to.
+  UPSTREAM_REV: 64e213a46a40473ba4f8aa3b249917fdc64d8a16
+
+jobs:
+  verify:
+    name: verify the port
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history. The default is a shallow clone, under which the
+          # "one commit against tests/original" check below would pass
+          # trivially and prove nothing.
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: Swatinem/rust-cache@v2
+
+      # First, before anything can be claimed. A build that reported the suite
+      # passing while the suite had been edited would be worthless, so this runs
+      # ahead of every other step rather than alongside them.
+      - name: Original tests are unmodified
+        run: python tools/verify_hashes.py
+
+      - name: Original tests have one commit against them
+        run: |
+          count=$(git log --oneline -- tests/original/ | wc -l)
+          echo "commits touching tests/original: $count"
+          git log --oneline -- tests/original/
+          test "$count" -eq 1
+
+      - name: Formatting
+        run: cargo fmt --check
+
+      - name: Lints
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Lints, with the Python bindings compiled in
+        run: cargo clippy --features python --lib -- -D warnings
+
+      - name: Rust tests
+        run: cargo test
+
+      # The upstream source is needed to re-derive the generated tables and to
+      # compare against. Pinned, so a change upstream cannot silently alter what
+      # this build checks.
+      - name: Fetch upstream at the pinned revision
+        run: |
+          git clone --quiet https://github.com/scrapinghub/price-parser upstream
+          git -C upstream checkout --quiet "$UPSTREAM_REV"
+          git -C upstream log -1 --format='upstream at %h %s'
+
+      - name: Generated files are current
+        run: |
+          python tools/gen_unicode_digits.py --check
+          python tools/gen_currencies.py --upstream upstream/price_parser --check
+
+      - name: Build the extension module
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --quiet --upgrade pip
+          .venv/bin/pip install --quiet maturin pytest attrs
+          .venv/bin/maturin develop --release
+
+      # The claim this whole project rests on.
+      - name: Original test suite, unmodified, against Rust
+        run: .venv/bin/python -m pytest tests/original -q
+
+      - name: Binding tests
+        run: .venv/bin/python -m pytest tests/python -q
+
+      - name: Original tests are still unmodified afterwards
+        run: python tools/verify_hashes.py
+
+      # A fixed seed keeps the run reproducible; the fuzzer prints it either
+      # way, so a failure here can be replayed locally with --seed.
+      - name: Differential fuzz against upstream
+        run: .venv/bin/python tools/fuzz_diff.py --iterations 20000 --seed 20260803 --upstream upstream

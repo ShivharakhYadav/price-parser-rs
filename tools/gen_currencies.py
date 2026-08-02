@@ -231,7 +231,9 @@ def main() -> int:
         # Compare against a formatted rendering, since that is what gets
         # committed.
         tmp = args.output.with_suffix(".rs.check")
-        tmp.write_text(generated, encoding="utf-8")
+        # newline="\n" explicitly: the default translates to CRLF on Windows,
+        # so the same input would produce a different file per platform.
+        tmp.write_text(generated, encoding="utf-8", newline="\n")
         try:
             rustfmt(tmp)
             stale = tmp.read_text(encoding="utf-8") != args.output.read_text(
@@ -246,7 +248,7 @@ def main() -> int:
         return 0
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(generated, encoding="utf-8")
+    args.output.write_text(generated, encoding="utf-8", newline="\n")
     formatted = rustfmt(args.output)
 
     print(f"wrote {args.output.relative_to(REPO_ROOT)}")
