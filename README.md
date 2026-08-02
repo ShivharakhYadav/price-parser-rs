@@ -210,6 +210,20 @@ price.currency      # '$'
 price.amount_text   # '12.99'
 ```
 
+Upstream is a `py.typed` package, so a type checker sees its annotations. The implementation here is
+Rust and has none for a checker to read, so the wheel ships [PEP 561](https://peps.python.org/pep-0561/)
+stubs to keep the port a drop-in replacement for type checking too:
+
+```
+price.amount        # Decimal | None
+price.currency      # str | None
+price.amount_float  # float | None
+```
+
+The stubs are hand-written, so `tests/typing/` pins each signature with `assert_type` and CI runs
+`mypy --strict` over it. Without that, a method added to the Rust and forgotten in the stub would go
+unnoticed.
+
 ### Building
 
 ```bash
@@ -237,9 +251,15 @@ Comparing against upstream additionally needs `attrs`, which is upstream's only 
 | `src/price.rs` | The `Price` value and `fromstring` — the pure-Rust entry point |
 | `src/python.rs` | The only module that touches FFI |
 | `src/currencies.rs`, `src/digits.rs` | Generated tables, never hand-edited |
+| `price_parser/` | The Python package: import shim, PEP 561 stubs, `py.typed` |
 | `tools/` | Generators, hash verification, the fuzzer, the benchmark |
 | `examples/` | Differential checkers, each exiting non-zero on disagreement |
 | `tests/original/` | Upstream's suite, frozen and hashed |
+| `tests/typing/` | `assert_type` checks holding the stubs to the module |
+
+`price_parser/__init__.py` is not incidental and should not be deleted. Creating that directory
+switches maturin to a mixed layout, at which point it stops generating the shim itself — so the file
+has to exist for `from price_parser import Price` to work at all.
 
 The core carries no PyO3 dependency and `unsafe` is **forbidden outright** in that build
 (`forbid(unsafe_code)`, relaxed only under the `python` feature, where PyO3's macros expand to unsafe
@@ -260,6 +280,8 @@ git -C price-parser checkout 64e213a46a40473ba4f8aa3b249917fdc64d8a16
 | One commit against them | `git log --oneline -- tests/original/` |
 | The suite passes | `pytest tests/original -q` |
 | Generated tables are current | `python tools/gen_unicode_digits.py --check` |
+| Currency tables are current | `python tools/gen_currencies.py --upstream ../price-parser/price_parser --check` |
+| Stubs match the module | `mypy --strict tests/typing/` |
 | 202,000 fuzz cases agree | `python tools/fuzz_diff.py --iterations 50000 --upstream ../price-parser` |
 | ~4× faster | `python tools/bench.py --upstream ../price-parser` |
 

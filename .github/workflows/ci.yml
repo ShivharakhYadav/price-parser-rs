@@ -77,8 +77,14 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install --quiet --upgrade pip
-          .venv/bin/pip install --quiet maturin pytest attrs
+          .venv/bin/pip install --quiet maturin pytest attrs mypy
           .venv/bin/maturin develop --release
+
+      # The stubs are hand-written, so nothing otherwise stops them drifting
+      # from src/python.rs. assert_type makes each expectation a hard failure
+      # rather than a silent Any.
+      - name: Type stubs match the module
+        run: .venv/bin/mypy --strict tests/typing/
 
       # The claim this whole project rests on.
       - name: Original test suite, unmodified, against Rust

@@ -6,7 +6,7 @@
 //! `64e213a46a40473ba4f8aa3b249917fdc64d8a16`, BSD-3-Clause. Regenerate with:
 //!
 //! ```text
-//! python tools/gen_currencies.py --source path/to/price_parser/_currencies.py
+//! python tools/gen_currencies.py --upstream path/to/price_parser
 //! ```
 //!
 //! `CURRENCY_CODES` preserves upstream's dict insertion order. The other two
