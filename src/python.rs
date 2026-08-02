@@ -24,12 +24,24 @@
 //! This was established by experiment, not assumption: defining only `__init__`
 //! leaves direct construction silently returning empty values.
 
+use pyo3::basic::CompareOp;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyTuple};
+use pyo3::types::{PyDict, PyNotImplemented, PyTuple, PyType};
 use rust_decimal::Decimal;
 use std::str::FromStr;
 
 use crate::price::Price as CorePrice;
+
+/// Read a Python separator argument as a single character.
+///
+/// An empty string becomes `None`. Upstream selects the separator with
+/// `decimal_separator or get_decimal_separator(num)`, and `""` is falsy there,
+/// so it falls back to inference rather than being used literally.
+fn separator_char(value: Option<String>) -> Option<char> {
+    value
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.chars().next())
+}
 
 /// Python-facing `Price`.
 ///
@@ -155,6 +167,57 @@ impl PyPrice {
         self.inner.amount_float()
     }
 
+    /// Parse a price out of text.
+    ///
+    /// The suite calls this both positionally and by keyword, so every
+    /// parameter is available either way.
+    ///
+    /// Returns a `Price` even when invoked on a subclass, matching upstream,
+    /// which constructs `Price(...)` explicitly rather than `cls(...)`.
+    #[classmethod]
+    #[pyo3(signature = (price=None, currency_hint=None, decimal_separator=None, digit_group_separator=None))]
+    fn fromstring(
+        _cls: &Bound<'_, PyType>,
+        price: Option<String>,
+        currency_hint: Option<String>,
+        decimal_separator: Option<String>,
+        digit_group_separator: Option<String>,
+    ) -> PyPrice {
+        PyPrice {
+            inner: CorePrice::fromstring(
+                price.as_deref(),
+                currency_hint.as_deref(),
+                separator_char(decimal_separator),
+                digit_group_separator.as_deref(),
+            ),
+        }
+    }
+
+    /// Equality over the three fields.
+    ///
+    /// Upstream's `attrs`-generated `__eq__` compares only when the classes
+    /// match *exactly*, returning `NotImplemented` otherwise so Python can try
+    /// the reflected operation. That is what lets the suite's
+    /// `assert parsed == example` reach `Example.__eq__` rather than being
+    /// answered here, so the behaviour is reproduced rather than simplified to
+    /// a plain `false`.
+    fn __richcmp__<'py>(
+        &self,
+        other: &Bound<'py, PyAny>,
+        op: CompareOp,
+    ) -> PyResult<Bound<'py, PyAny>> {
+        let py = other.py();
+        let comparable = matches!(op, CompareOp::Eq | CompareOp::Ne)
+            && other.get_type().is(&py.get_type::<PyPrice>());
+        if !comparable {
+            return Ok(PyNotImplemented::get(py).to_owned().into_any());
+        }
+
+        let equal = self.inner == other.downcast::<PyPrice>()?.borrow().inner;
+        let result = matches!(op, CompareOp::Eq) == equal;
+        Ok(result.into_pyobject(py)?.to_owned().into_any())
+    }
+
     fn __repr__(&self) -> String {
         // attrs marks amount_text repr=False upstream, so it is omitted here.
         let amount = match &self.inner.amount {
@@ -169,13 +232,38 @@ impl PyPrice {
     }
 }
 
+/// Parse a price out of text.
+///
+/// Module-level alias for `Price.fromstring`, mirroring upstream's
+/// `parse_price = Price.fromstring`.
+#[pyfunction]
+#[pyo3(signature = (price=None, currency_hint=None, decimal_separator=None, digit_group_separator=None))]
+fn parse_price(
+    price: Option<String>,
+    currency_hint: Option<String>,
+    decimal_separator: Option<String>,
+    digit_group_separator: Option<String>,
+) -> PyPrice {
+    PyPrice {
+        inner: CorePrice::fromstring(
+            price.as_deref(),
+            currency_hint.as_deref(),
+            separator_char(decimal_separator),
+            digit_group_separator.as_deref(),
+        ),
+    }
+}
+
 /// The `price_parser` extension module.
 ///
 /// Named to match the upstream Python package so the vendored original tests
-/// resolve `from price_parser import ...` to this code.
+/// resolve `from price_parser import ...` to this code. Exports the same two
+/// names upstream's `__all__` does.
 #[pymodule]
 fn price_parser(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__doc__", "Rust port of scrapinghub/price-parser.")?;
     m.add_class::<PyPrice>()?;
+    m.add_function(wrap_pyfunction!(parse_price, m)?)?;
+    m.add("__all__", vec!["Price", "parse_price"])?;
     Ok(())
 }

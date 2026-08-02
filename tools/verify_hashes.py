@@ -39,13 +39,28 @@ def sha256(path: Path) -> str:
 # and make routine edits to them look like tampering.
 NOT_UPSTREAM = {"SHA256SUMS", "PROVENANCE.md"}
 
+# Build artefacts. Running pytest writes __pycache__ next to the tests, and
+# treating that as an untracked addition would fail the check every time the
+# suite runs -- including in CI, right after the step that proves the port
+# works. Only compiled caches are ignored; a stray .py file here is still
+# reported, since that is exactly the kind of addition worth catching.
+IGNORED_DIRS = {"__pycache__", ".pytest_cache"}
+IGNORED_SUFFIXES = {".pyc", ".pyo"}
+
+
+def is_artefact(path: Path) -> bool:
+    return (
+        any(part in IGNORED_DIRS for part in path.parts)
+        or path.suffix in IGNORED_SUFFIXES
+    )
+
 
 def tracked_files() -> list[Path]:
     """Every upstream file under tests/original/."""
     return sorted(
         p
         for p in ORIGINAL_DIR.rglob("*")
-        if p.is_file() and p.name not in NOT_UPSTREAM
+        if p.is_file() and p.name not in NOT_UPSTREAM and not is_artefact(p)
     )
 
 
