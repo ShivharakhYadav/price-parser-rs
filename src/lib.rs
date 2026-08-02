@@ -24,7 +24,10 @@
 #![warn(missing_docs)]
 
 pub mod currencies;
+pub mod price;
 pub mod symbols;
+
+pub use price::Price;
 
 #[cfg(feature = "python")]
 mod python;
