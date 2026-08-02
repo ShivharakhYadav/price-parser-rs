@@ -27,6 +27,7 @@ pub mod currencies;
 pub mod number;
 pub mod price;
 pub mod symbols;
+pub mod text;
 
 pub use price::Price;
 
