@@ -42,6 +42,70 @@ fn price_text_regex() -> &'static Regex {
     &RE
 }
 
+/// The euro-as-decimal-separator pattern, with the group **participating**.
+///
+/// Upstream writes one pattern using a conditional group:
+///
+/// ```text
+/// [\d\s.,']*?\d    number, probably with thousand separators
+/// \s*?€(\s*?)?     euro, probably separated by whitespace   <- group 1
+/// \d(?(1)\d|\d*?)  group 1 matched -> one more digit; else -> a lazy run
+/// (?:$|[^\d])
+/// ```
+///
+/// `(?(1)yes|no)` is an if-then-else with no equivalent in Rust's `regex`. It
+/// does not need one: the conditional has exactly two outcomes, so the pattern
+/// splits cleanly into two, tried in the same order the engine would.
+///
+/// This is the *yes* arm. `(\s*?)?` participates -- matching zero or more
+/// whitespace -- so exactly two digits must follow.
+fn euro_participating_regex() -> &'static Regex {
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"[\d\s.,']*?\d\s*?€\s*?\d\d(?:$|[^\d])")
+            .expect("euro participating pattern must compile")
+    });
+    &RE
+}
+
+/// The same pattern with the group **skipped**.
+///
+/// Reached only by backtracking, when the arm above fails. Skipping the group
+/// consumes no whitespace at all, so a digit must follow the euro sign
+/// immediately -- and the digit run is then lazy and unbounded rather than
+/// fixed at two.
+///
+/// That distinction is the whole point of the conditional, and it is load
+/// bearing: `"12€345"` matches here with three digits, while `"12€ 345"`
+/// matches neither arm and falls through to the ordinary rule.
+fn euro_skipped_regex() -> &'static Regex {
+    static RE: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"[\d\s.,']*?\d\s*?€\d\d*?(?:$|[^\d])")
+            .expect("euro skipped pattern must compile")
+    });
+    &RE
+}
+
+/// Find the euro-separated price, reproducing the engine's search order.
+///
+/// Python tries start positions left to right and, at each one, the
+/// participating arm before the skipped arm. Running both patterns separately
+/// and taking the earlier match -- preferring the participating arm on a tie --
+/// gives exactly that: whichever arm starts earlier is the one the engine would
+/// have reached first, because a later start is only ever tried after every
+/// earlier one has failed for *both* arms.
+fn find_euro_price(text: &str) -> Option<&str> {
+    let participating = euro_participating_regex().find(text);
+    let skipped = euro_skipped_regex().find(text);
+
+    match (participating, skipped) {
+        (Some(a), Some(b)) => Some(if a.start() <= b.start() { a } else { b }),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+    .map(|m| m.as_str())
+}
+
 /// Extract the substring holding the price from text that may contain other
 /// things.
 ///
@@ -62,15 +126,35 @@ fn price_text_regex() -> &'static Regex {
 /// assert_eq!(extract_price_text("Foo"), None);
 /// ```
 ///
-/// # Not yet handled
+/// # The euro as a decimal separator
 ///
-/// Upstream has a second branch for text containing exactly one `€`, where the
-/// euro sign itself acts as the decimal separator (`"35€ 99"` means `35.99`).
-/// That branch uses a regex conditional group with no equivalent in Rust and
-/// lands separately. Until then, such inputs fall through to the rule below and
-/// may differ from upstream.
+/// When the text holds exactly one `€`, the sign itself may be acting as the
+/// decimal point, so `"35€ 99"` means `35.99` and yields `"35€99"`. Whitespace
+/// around it is removed, and the amount keeps the euro sign for
+/// [`crate::number::parse_number`] to interpret.
+///
+/// ```
+/// use price_parser::text::extract_price_text;
+///
+/// assert_eq!(extract_price_text("35€ 99").as_deref(), Some("35€99"));
+/// assert_eq!(extract_price_text("1,235€ 99").as_deref(), Some("1,235€99"));
+///
+/// // Three digits do not fit the pattern, so this is an ordinary price.
+/// assert_eq!(extract_price_text("35€ 999").as_deref(), Some("35"));
+///
+/// // Two euro signs, and the rule does not apply at all.
+/// assert_eq!(extract_price_text("99 €, 79 €").as_deref(), Some("99"));
+/// ```
 pub fn extract_price_text(price: &str) -> Option<String> {
     let normalised = whitespace_regex().replace_all(price, " ");
+
+    // Only when there is exactly one euro sign can it be the decimal point;
+    // two or more mean it is just currency, as in "99 €, 79 €".
+    if normalised.matches('€').count() == 1 {
+        if let Some(matched) = find_euro_price(&normalised) {
+            return Some(matched.replace(' ', ""));
+        }
+    }
 
     if let Some(caps) = price_text_regex().captures(&normalised) {
         let matched = caps.get(1).expect("group 1 is not optional").as_str();
@@ -216,6 +300,81 @@ mod tests {
         }
         // But only when no number was found first.
         assert_eq!(extract("free 12.99").as_deref(), Some("12.99"));
+    }
+
+    /// The euro branch, against upstream's own doctests.
+    #[test]
+    fn euro_doctests_match_upstream() {
+        assert_eq!(extract("35€ 99").as_deref(), Some("35€99"));
+        assert_eq!(extract("1,235€ 99").as_deref(), Some("1,235€99"));
+        // Three digits do not fit, so the ordinary rule takes over.
+        assert_eq!(extract("35€ 999").as_deref(), Some("35"));
+        // Two euro signs: the branch is skipped entirely.
+        assert_eq!(extract("99 €, 79 €").as_deref(), Some("99"));
+        assert_eq!(extract("99 € 79 €").as_deref(), Some("99"));
+    }
+
+    /// The exact digit-count behaviour, taken from running upstream's pattern.
+    ///
+    /// With whitespace after the euro the group participates and **exactly
+    /// two** digits must follow. Without it, backtracking skips the group and
+    /// the run becomes unbounded.
+    #[test]
+    fn euro_digit_counts_match_upstream() {
+        let cases: &[(&str, Option<&str>)] = &[
+            // No whitespace: any number of digits is accepted.
+            ("12€3", Some("12€3")),
+            ("12€34", Some("12€34")),
+            ("12€345", Some("12€345")),
+            ("12€3456", Some("12€3456")),
+            ("12€34567", Some("12€34567")),
+            // Whitespace after the euro: exactly two digits, or no match.
+            ("12€ 34", Some("12€34")),
+            ("12€  34", Some("12€34")),
+            // One digit or three-plus after whitespace falls through to the
+            // ordinary rule, which returns just the leading number.
+            ("12€ 3", Some("12")),
+            ("12€ 345", Some("12")),
+            ("12€ 3456", Some("12")),
+            // Whitespace before the euro is allowed on either arm.
+            ("12 €34", Some("12€34")),
+            ("12 € 34", Some("12€34")),
+            ("12 €345", Some("12€345")),
+            ("12 € 345", Some("12")),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(extract(input).as_deref(), *expected, "for {input:?}");
+        }
+    }
+
+    #[test]
+    fn euro_keeps_separators_in_the_leading_number() {
+        assert_eq!(extract("1,235€99").as_deref(), Some("1,235€99"));
+        assert_eq!(extract("1.235€99").as_deref(), Some("1.235€99"));
+        // An internal space is removed along with the whitespace around the euro.
+        assert_eq!(extract("1 235€99").as_deref(), Some("1235€99"));
+        assert_eq!(extract("1'235€99").as_deref(), Some("1'235€99"));
+    }
+
+    #[test]
+    fn euro_with_nothing_usable_falls_through() {
+        // No digits after the euro at all.
+        assert_eq!(extract("12€").as_deref(), Some("12"));
+        assert_eq!(extract("12€ ").as_deref(), Some("12"));
+        // No digits before it either, so the ordinary rule finds the trailing run.
+        assert_eq!(extract("€34").as_deref(), Some("34"));
+        assert_eq!(extract(" €34").as_deref(), Some("34"));
+    }
+
+    #[test]
+    fn euro_tolerates_surrounding_text() {
+        // The match may begin on whitespace, which is then stripped out.
+        assert_eq!(extract("price: 12€34").as_deref(), Some("12€34"));
+        assert_eq!(extract("abc12€34").as_deref(), Some("12€34"));
+        // A trailing non-digit ends the match and is carried along, matching
+        // upstream -- group(0) includes it.
+        assert_eq!(extract("12€34x").as_deref(), Some("12€34x"));
+        assert_eq!(extract("12€345x").as_deref(), Some("12€345x"));
     }
 
     #[test]
