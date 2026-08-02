@@ -1,5 +1,7 @@
 # price-parser-rs
 
+[![CI](https://github.com/ShivharakhYadav/price-parser-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/ShivharakhYadav/price-parser-rs/actions/workflows/ci.yml)
+
 A Rust port of [`scrapinghub/price-parser`](https://github.com/scrapinghub/price-parser) — extract a
 price amount and currency symbol from a raw text string.
 
@@ -46,6 +48,25 @@ and upstream's answers produced from one place so both implementations see ident
 
 Each is reproducible via the programs in [`examples/`](examples/), which exit non-zero on any
 disagreement.
+
+A differential fuzzer covers the cases nobody thought to write: `tools/fuzz_diff.py` builds random
+price-like strings, runs them through upstream, and compares every field. **200,000 inputs across
+five seeds, all agreeing.** Runs are reproducible — each prints its seed, and `--seed` replays it.
+
+It earned its place on the first run, finding a bug the suite could not: Python's `Decimal` accepts
+any Unicode decimal digit, so a price written in Arabic-Indic or Devanagari numerals parsed as
+nothing at all. Silently — no error, the amount simply vanished. The suite never caught it because
+its corpus is scraped Western storefronts.
+
+## Everything above re-runs on every push
+
+[CI](.github/workflows/ci.yml) runs the whole chain: the hashes, git's own view of the vendored
+tests, the Rust tests, lints under both feature configurations, generated-file freshness, the
+extension build, both test suites, and a fixed-seed differential fuzz against upstream.
+
+The hash check runs **first**, deliberately. A green build reporting the suite passing while the
+suite had been edited would be worth nothing, so the evidence is established before any claim is
+made — and checked again afterwards.
 
 ## Performance
 
