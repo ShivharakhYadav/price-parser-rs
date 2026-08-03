@@ -291,6 +291,34 @@ Comparing against upstream additionally needs `attrs`, which is upstream's only 
 switches maturin to a mixed layout, at which point it stops generating the shim itself — so the file
 has to exist for `from price_parser import Price` to work at all.
 
+### Why there is Python in a Rust port
+
+A reasonable thing to ask of a Python-to-Rust port, so here is the accounting.
+
+**The port itself contains no Python.** `src/` is eight Rust files and nothing else, and `cargo test`
+runs 70 tests with **no Python installed at all**. Not one line of parsing logic is Python.
+
+The Python that is here falls into three groups, none of them the port:
+
+| | Lines | Why it cannot simply be deleted |
+|---|---:|---|
+| `tests/original/test_price_parsing.py` | 1,489 | **Upstream's suite — this is the proof.** Removing it would delete the evidence, not old code |
+| `tools/*.py` | 1,121 | Generators, hash verification, the differential fuzzer, the benchmark |
+| `tests/python/`, `tests/typing/`, the shim | 313 | Tests of the Python binding, which can only be exercised from Python |
+
+The tooling is Python for a reason that comes down to one sentence: **you cannot prove equivalence
+with Python without running Python.** The fuzzer and benchmark must execute the real reference
+implementation to compare against it. The generators read upstream's own source with `ast` and
+`unicodedata`; doing that from Rust would mean writing a Python parser to avoid writing Python.
+
+**None of this is the port depending on the source language.** Rule 05 prohibits *linking* against
+the Python interpreter — loading `libpython` into the process. `tools/fuzz_diff.py` deliberately does
+the opposite: it runs upstream in a **separate interpreter** and compares recorded output, so no
+Python is linked into Rust for verification at all.
+
+Deleting these files would not make the port more Rust. It would remove the evidence that it behaves
+like the original, which is the entire point of the exercise.
+
 ### `unsafe` count: zero
 
 No hand-written `unsafe` exists anywhere in this crate, and that is enforced by the compiler rather
