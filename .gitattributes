@@ -7,3 +7,16 @@
 # runs the original suite unmodified, and a line-ending conversion on checkout
 # would change those hashes and invalidate the claim.
 tests/original/** -text
+
+# Also excluded from GitHub's language statistics, because it is not this
+# project's code. tests/original/test_price_parsing.py is 75 KB of vendored
+# upstream Python -- 58% of all the Python here -- and counting it made a
+# Python-to-Rust port report itself as majority Python, which is precisely
+# backwards.
+#
+# `linguist-vendored` is the marker Linguist provides for third-party code
+# carried in-tree, which this is exactly. Our own Python under tools/ stays
+# counted: it is real work, it is how the port is verified against the
+# original, and hiding it to flatter the bar would misrepresent the repository
+# in the other direction.
+tests/original/** linguist-vendored
