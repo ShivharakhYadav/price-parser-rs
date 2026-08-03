@@ -119,6 +119,9 @@ arguments and silently discards them — every field empty, every assertion comp
 only `__init__`, direct construction returns empty values. Both are implemented, and `#[new]` stays
 permissive because a subclass pushes its own unrelated signature through it first.
 
+All 34 decisions — every place a literal translation would have been wrong — are written up in
+[`DECISIONS.md`](DECISIONS.md).
+
 ### A bug the test suite could not find
 
 Python's `Decimal` accepts **any** Unicode decimal digit, so `Decimal("٥")` is 5. `rust_decimal`

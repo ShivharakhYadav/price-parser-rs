@@ -46,6 +46,11 @@ divergences = 0
 hand_written_blocks = 0
 enforced_by = "#![cfg_attr(not(feature = \"python\"), forbid(unsafe_code))]"
 
+[decisions]
+# Every non-trivial divergence from the original, and why.
+log = "DECISIONS.md"
+count = 34
+
 [build]
 # One command to a runnable artifact that re-proves all of the above.
 docker = "docker build -t price-parser-rs . && docker run --rm price-parser-rs"
