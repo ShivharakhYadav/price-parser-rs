@@ -1,0 +1,58 @@
+{
+  "corpus": {
+    "price_strings": 1178,
+    "source": "tests/original/test_price_parsing.py"
+  },
+  "method": {
+    "aggregate": "best of rounds",
+    "build": "release",
+    "latency_samples_per_impl": 23560,
+    "passes_per_round": 60,
+    "rounds": 5
+  },
+  "platform": {
+    "machine": "AMD64",
+    "python": "3.12.10",
+    "release": "10",
+    "system": "Windows"
+  },
+  "results": {
+    "this port, from Python": {
+      "latency_samples": 23560,
+      "max": 0.000881300016772002,
+      "p50": 4.5000051613897085e-06,
+      "p90": 6.200018106028438e-06,
+      "p99": 1.0599993402138352e-05,
+      "p999": 5.979998968541622e-05,
+      "peak_rss_bytes": null,
+      "seconds_per_item": 4.5607838142500115e-06,
+      "startup_seconds": 0.10811729999841191
+    },
+    "this port, native Rust": {
+      "items": 1178,
+      "items_per_second": 215258.4,
+      "latency_samples": 23560,
+      "max": 0.0015146,
+      "p50": 3.5e-06,
+      "p90": 5.5e-06,
+      "p99": 9.5e-06,
+      "p999": 6.59e-05,
+      "peak_rss_bytes": null,
+      "repeats": 60,
+      "rounds": 5,
+      "seconds_per_item": 4.64558e-06,
+      "startup_seconds": 0.02530860001570545
+    },
+    "upstream Python": {
+      "latency_samples": 23560,
+      "max": 0.01649930002167821,
+      "p50": 1.829999382607639e-05,
+      "p90": 2.9399991035461426e-05,
+      "p99": 7.000000914558768e-05,
+      "p999": 0.0005861000099685043,
+      "peak_rss_bytes": null,
+      "seconds_per_item": 2.1979036502807993e-05,
+      "startup_seconds": 0.324267999996664
+    }
+  }
+}

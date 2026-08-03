@@ -174,32 +174,42 @@ compared field by field.
 
 ## Performance
 
-Roughly **4× faster** than the Python original, over the same 1,178 real price strings from the
-frozen suite.
+Measured over the same 1,178 real price strings from the frozen suite.
 
-| implementation | per price | prices/sec | speedup |
-|---|---:|---:|---:|
-| upstream Python | ~32 µs | ~31,000 | 1.0× |
-| this port, from Python | ~8 µs | ~127,000 | ~4× |
-| this port, native Rust | ~7 µs | ~146,000 | ~4× |
+| implementation | per price | p50 | p99 | startup | peak RSS |
+|---|---:|---:|---:|---:|---:|
+| upstream Python | 22.0 µs | 18.3 µs | 70.0 µs | 324 ms | n/a |
+| this port, from Python | 4.6 µs | 4.5 µs | 10.6 µs | 108 ms | n/a |
+| this port, native Rust | 4.7 µs | 3.5 µs | 9.5 µs | **25 ms** | n/a |
 
-Read these as approximate, and the table as a representative sample rather than a precise result.
-Across repeated runs the Python-facing speedup sat in the 3.6–4.7× band while the native figure swung
-from 2.3× to 6.1×, so the two Rust paths cannot be told apart on this hardware — the FFI overhead is
-real but smaller than the machine's jitter. The Python baseline was the steady one, at about ±5%.
+**Startup is the larger win: ~13× faster to first answer**, which matters more than throughput for
+anything short-lived. Throughput is around 4×, and the tail improves by a similar margin.
 
-The honest summary is **around 4×**, not a precise multiple. Anyone wanting a firm number should
-re-run on a quiet machine.
+Raw numbers in [`bench/results.json`](bench/results.json); the full method, including what these
+figures cannot tell you, in [`bench/methodology.md`](bench/methodology.md). Reproduce with
+`python tools/bench.py --upstream ../price-parser`.
 
-Methodology is identical on both sides: same corpus, a warmup pass, then the best of five rounds of
-sixty passes each. Best rather than mean, because the fastest observed run is the least polluted by
-scheduling noise, and taking it on both sides keeps the bias pointing the same way. Rounds are long
-deliberately — a single pass takes a few milliseconds, and timing that produced a table where the FFI
-path appeared *faster* than the native call it wraps.
+### How much to trust these
 
-The module reports its own build profile as `price_parser.__build__` and the benchmark refuses to run
-against a debug build. `maturin develop` defaults to debug, which is around twenty times slower and
-made this port look five times *slower* than Python the first time it was measured.
+Less than their precision suggests. The Python baseline is steady to about ±5%, but the Rust figures
+are noisier in relative terms simply because they are smaller — across repeated samples the native
+throughput swung between roughly 2.3× and 6.1× the baseline. **The two Rust paths cannot be told
+apart on this hardware**: the FFI overhead is real but smaller than the machine's jitter.
+
+Latency percentiles carry timer overhead of tens of nanoseconds against a parse of a few
+microseconds — about a percent, paid by both sides. Visible in the numbers, not dominating them, and
+a p99 quoted without saying so would be overclaiming.
+
+**Peak RSS is reported as unavailable on Windows, deliberately.** Two measurement approaches both
+returned a constant ~3.4 MiB regardless of workload; a child was made to allocate 200 MB and the
+figure did not move. Rather than publish a number known to be wrong, the platform reports nothing.
+Linux uses `getrusage`, which is reliable.
+
+Two mistakes shaped this benchmark, both caught by numbers that made no sense. `maturin develop`
+defaults to a **debug** build, ~20× slower, which made the port look five times *slower* than Python
+— the module now reports its own profile and the benchmark refuses to run against debug. And timing
+`cargo run` instead of the compiled binary attributed ~700 ms of cargo's freshness check to Rust
+startup.
 
 ## Using it
 

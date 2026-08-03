@@ -46,6 +46,10 @@ divergences = 0
 hand_written_blocks = 0
 enforced_by = "#![cfg_attr(not(feature = \"python\"), forbid(unsafe_code))]"
 
+[bench]
+methodology = "bench/methodology.md"
+results = "bench/results.json"
+
 [decisions]
 # Every non-trivial divergence from the original, and why.
 log = "DECISIONS.md"
