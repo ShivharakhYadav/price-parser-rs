@@ -76,9 +76,20 @@ that `ctypes` otherwise truncates to `c_int` — was necessary but not sufficien
 
 Rather than publish a number known to be wrong, the platform reports nothing.
 
-On Linux and macOS, `getrusage(RUSAGE_CHILDREN)` is reliable and produces a real figure. **CI runs
-this benchmark on Linux on every push** precisely so the one number the committed results cannot
-supply is still measured somewhere and visible in the job log.
+**Linux got it wrong too, in a different way, before it got it right.** The first Linux
+implementation used `getrusage(RUSAGE_CHILDREN).ru_maxrss` — which is a high-water mark across
+*every child the process has ever reaped*. Once an earlier `cargo build` had run, it returned that
+build's footprint forever: an identical 393 MiB for all three implementations. It reads as a real
+measurement and is nothing of the kind.
+
+It now samples `/proc/<pid>/status` `VmHWM` while the child is alive, which is per-process and cannot
+be polluted that way. **CI runs this benchmark on Linux on every push**, so the one number the
+committed Windows results cannot supply is measured where it can be trusted, and is visible in the
+job log.
+
+The pattern is worth naming: **both wrong versions returned a constant**, and a constant is what a
+broken measurement looks like. Neither would have been caught by a test — only by asking whether the
+number could possibly be true.
 
 Neither implementation reads its own RSS from inside: doing that from Rust would mean an unsafe FFI
 call, and the zero-`unsafe` guarantee is worth more than a memory number.

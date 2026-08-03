@@ -166,22 +166,34 @@ def peak_rss(command: list[str]) -> int | None:
     Neither implementation reads its own RSS: doing so from Rust would mean an
     unsafe FFI call, and the zero-unsafe guarantee is worth more than a memory
     figure.
-
-    On Linux and macOS `getrusage(RUSAGE_CHILDREN)` is reliable, so CI reports
-    a real number there.
     """
-    if sys.platform == "win32":
+    if not sys.platform.startswith("linux"):
         return None
 
+    # /proc/<pid>/status VmHWM, sampled while the child is alive.
+    #
+    # Deliberately NOT getrusage(RUSAGE_CHILDREN).ru_maxrss: that is a
+    # high-water mark across every child the process has ever reaped, so once
+    # an earlier `cargo build` has run it reports that build's footprint
+    # forever. It gave an identical 393 MiB for all three implementations
+    # before this was noticed. VmHWM is per-process and cannot be polluted that
+    # way.
     try:
-        import resource  # noqa: PLC0415
-
-        before = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
-        subprocess.run(command, capture_output=True, check=False)
-        after = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
-        peak = max(after, before)
-        # Linux reports kilobytes; macOS reports bytes.
-        return peak * 1024 if sys.platform.startswith("linux") else peak
+        proc = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        status = Path(f"/proc/{proc.pid}/status")
+        peak_kb = 0
+        deadline = time.perf_counter() + 2.0
+        while proc.poll() is None and time.perf_counter() < deadline:
+            try:
+                for line in status.read_text().splitlines():
+                    if line.startswith("VmHWM:"):
+                        peak_kb = max(peak_kb, int(line.split()[1]))
+                        break
+            except (OSError, ValueError, IndexError):
+                pass  # the process may exit mid-read
+            time.sleep(0.01)
+        proc.wait()
+        return peak_kb * 1024 or None
     except Exception:  # noqa: BLE001
         return None
 
