@@ -1,0 +1,39 @@
+# Port Mortem / Code Resurrection 2026 — submission manifest.
+#
+# Track letter, source URL and the kickoff hash of the original test suite,
+# as required by the event's repository anatomy.
+
+track = "D"                                              # Python -> Rust
+source_url = "https://github.com/scrapinghub/price-parser"
+source_revision = "64e213a46a40473ba4f8aa3b249917fdc64d8a16"
+
+# SHA-256 of the original test suite, taken when it was vendored and never
+# changed since. tools/verify_hashes.py re-checks it, CI runs that check before
+# and after the suite, and git shows a single commit against tests/original/.
+kickoff_hash = "92c72582cca6b9d0201782ddc2665538d9c30602619a4bc06c5afc7fd5f17966"
+
+[source]
+language = "Python"
+name = "price-parser"
+description = "Extract price amount and currency symbol from a raw text string."
+license = "BSD-3-Clause"
+
+[port]
+language = "Rust"
+name = "price-parser-rs"
+repository = "https://github.com/ShivharakhYadav/price-parser-rs"
+
+[tests]
+# The upstream suite, byte-for-byte, run unmodified against the Rust.
+original = "tests/original/test_price_parsing.py"
+manifest = "tests/original/SHA256SUMS"
+provenance = "tests/original/PROVENANCE.md"
+verify = "python tools/verify_hashes.py"
+result = "1059 passed, 134 xfailed"
+
+[fuzz]
+harness = "tools/fuzz_diff.py"
+
+[build]
+# One command to a runnable artifact that re-proves all of the above.
+docker = "docker build -t price-parser-rs . && docker run --rm price-parser-rs"

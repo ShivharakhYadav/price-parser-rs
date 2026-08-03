@@ -1,0 +1,16 @@
+# Build output and virtualenvs are rebuilt inside the image. Copying them in
+# would bloat the context by gigabytes and risk host artefacts leaking into a
+# build that is supposed to start from source.
+target/
+.venv/
+__pycache__/
+*.pyc
+*.pyd
+*.so
+*.pdb
+
+# Not needed to build or verify the port.
+.git/
+.github/
+fuzz-*.tsv
+bench-corpus.*
