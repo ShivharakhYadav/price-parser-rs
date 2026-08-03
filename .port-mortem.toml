@@ -33,6 +33,18 @@ result = "1059 passed, 134 xfailed"
 
 [fuzz]
 harness = "tools/fuzz_diff.py"
+log = "fuzz/log.txt"
+# Last qualifying run, reproducible with the recorded seed.
+cases = 500000
+duration_seconds = 100.4
+divergences = 0
+
+[unsafe]
+# forbid(unsafe_code) on the default build, so this is enforced by the compiler
+# rather than asserted. The `python` feature relaxes it only because PyO3's
+# macros expand to unsafe at the FFI boundary; no unsafe is hand-written.
+hand_written_blocks = 0
+enforced_by = "#![cfg_attr(not(feature = \"python\"), forbid(unsafe_code))]"
 
 [build]
 # One command to a runnable artifact that re-proves all of the above.

@@ -154,8 +154,20 @@ disagreement. `fromstring` is compared field by field, because a port can get th
 quietly losing the currency and a whole-object check would hide which one drifted.
 
 Then the cases nobody thought to write: `tools/fuzz_diff.py` builds random price-like strings, runs
-them through upstream, and compares every field. **202,000 inputs across five seeds, all agreeing.**
-Runs are reproducible — each prints its seed, and `--seed` replays it exactly.
+them through upstream, and compares every field. Runs are reproducible — each prints its seed, and
+`--seed` replays it exactly.
+
+Last qualifying run, recorded in [`fuzz/log.txt`](fuzz/log.txt):
+
+```
+iterations : 500000
+upstream   : ../price-parser @ 64e213a
+elapsed    : 100.4s
+result     : PASS - zero divergences
+```
+
+It never links Python into Rust — upstream runs in a separate interpreter and the two outputs are
+compared field by field.
 
 ## Performance
 
@@ -261,9 +273,22 @@ Comparing against upstream additionally needs `attrs`, which is upstream's only 
 switches maturin to a mixed layout, at which point it stops generating the shim itself — so the file
 has to exist for `from price_parser import Price` to work at all.
 
-The core carries no PyO3 dependency and `unsafe` is **forbidden outright** in that build
-(`forbid(unsafe_code)`, relaxed only under the `python` feature, where PyO3's macros expand to unsafe
-at the FFI boundary). No hand-written `unsafe` exists anywhere in the crate.
+### `unsafe` count: zero
+
+No hand-written `unsafe` exists anywhere in this crate, and that is enforced by the compiler rather
+than promised:
+
+```rust
+#![cfg_attr(not(feature = "python"), forbid(unsafe_code))]
+```
+
+`forbid` cannot be overridden by an inner `allow`, so the default build fails outright if any `unsafe`
+appears. It is relaxed only under the `python` feature, because PyO3's macros expand to `unsafe` at
+the FFI boundary — none of it written by hand, and all of it confined to `src/python.rs`. CI reports
+the count on every push.
+
+The core also carries no PyO3 dependency at all: `cargo test` runs the full Rust suite with no Python
+installed.
 
 ## Reproducing every claim
 

@@ -32,6 +32,8 @@ import random
 import string
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -132,8 +134,18 @@ def main() -> int:
     rng = random.Random(seed)
     symbols = list(up.SAFE_CURRENCY_SYMBOLS) + list(up.OTHER_CURRENCY_SYMBOLS)
 
+    started = time.time()
+    print(f"started    : {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC")
     print(f"seed       : {seed}   (pass --seed {seed} to replay)")
     print(f"iterations : {args.iterations}")
+    # Relative where possible: a saved log is a shared artefact, and an absolute
+    # path from whoever happened to run it is noise at best.
+    try:
+        shown = args.upstream.resolve().relative_to(REPO_ROOT.parent)
+        shown = f"../{shown}"
+    except ValueError:
+        shown = args.upstream
+    print(f"upstream   : {shown} @ {UPSTREAM_PIN[:7]}")
 
     rows = []
     for _ in range(args.iterations):
@@ -163,16 +175,31 @@ def main() -> int:
     print(f"table      : {table.name}")
     print()
 
+    # Flush before handing the terminal to the child. Python buffers its own
+    # output when piped to a file, so without this the child's result line lands
+    # above this script's header in a saved log -- confusing in the one artefact
+    # meant to be read as a record.
+    sys.stdout.flush()
     result = subprocess.run(
         ["cargo", "run", "--quiet", "--example", "check_fromstring", "--", str(table)],
         cwd=REPO_ROOT,
         check=False,
     )
+    sys.stdout.flush()
 
     if result.returncode == 0 and not args.keep:
         table.unlink(missing_ok=True)
     elif result.returncode != 0:
         print(f"\ntable kept for investigation: {table}")
+
+    # Reported so a saved log can be shown to have met the 60s+ bar on its own
+    # evidence, rather than the duration being asserted alongside it.
+    elapsed = time.time() - started
+    print()
+    print(f"elapsed    : {elapsed:.1f}s")
+    print(f"throughput : {args.iterations / elapsed:,.0f} cases/sec")
+    print(f"finished   : {datetime.now(timezone.utc):%Y-%m-%d %H:%M:%S} UTC")
+    print(f"result     : {'PASS - zero divergences' if result.returncode == 0 else 'FAIL'}")
 
     return result.returncode
 

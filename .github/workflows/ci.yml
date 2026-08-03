@@ -59,6 +59,19 @@ jobs:
       - name: Rust tests
         run: cargo test
 
+      # forbid(unsafe_code) already makes the default build fail if any unsafe
+      # exists, so `cargo test` above is the real enforcement. This reports the
+      # count explicitly, because a claim of zero is worth showing rather than
+      # leaving implicit in a lint attribute.
+      - name: No hand-written unsafe
+        run: |
+          count=$(grep -rn --include='*.rs' -E '\bunsafe\b' src/ \
+                  | grep -vE '^\S+:[0-9]+: *(//|///|//!)' \
+                  | grep -v 'unsafe_code' | wc -l)
+          echo "hand-written 'unsafe' in src/: $count"
+          grep -rn --include='*.rs' -E '\bunsafe\b' src/ || true
+          test "$count" -eq 0
+
       # The upstream source is needed to re-derive the generated tables and to
       # compare against. Pinned, so a change upstream cannot silently alter what
       # this build checks.

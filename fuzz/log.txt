@@ -1,0 +1,14 @@
+started    : 2026-08-03 05:21:08 UTC
+seed       : 20260803   (pass --seed 20260803 to replay)
+iterations : 500000
+upstream   : ../price-parser @ 64e213a
+with amount: 390723 of 500000
+table      : fuzz-20260803.tsv
+
+
+IDENTICAL - all 500000 cases agree with upstream on every field
+
+elapsed    : 100.4s
+throughput : 4,982 cases/sec
+finished   : 2026-08-03 05:22:49 UTC
+result     : PASS - zero divergences
