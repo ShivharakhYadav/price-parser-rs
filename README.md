@@ -174,27 +174,31 @@ compared field by field.
 
 ## Performance
 
-Measured over the same 1,178 real price strings from the frozen suite.
+Measured over the same 1,178 real price strings from the frozen suite. Figures below are from a
+[CI run](.github/workflows/ci.yml) on Linux, where every metric including peak memory can be
+measured:
 
 | implementation | per price | p50 | p99 | startup | peak RSS |
 |---|---:|---:|---:|---:|---:|
-| upstream Python | 22.0 µs | 18.3 µs | 70.0 µs | 324 ms | n/a |
-| this port, from Python | 4.6 µs | 4.5 µs | 10.6 µs | 108 ms | n/a |
-| this port, native Rust | 4.7 µs | 3.5 µs | 9.5 µs | **25 ms** | n/a |
+| upstream Python | 5.94 µs | 5.70 µs | 12.06 µs | 56.6 ms | 14.7 MiB |
+| this port, from Python | 1.20 µs | 1.29 µs | 2.42 µs | 15.2 ms | 12.7 MiB |
+| this port, native Rust | **0.79 µs** | 0.80 µs | 1.36 µs | **4.0 ms** | **4.9 MiB** |
 
-**Startup is the larger win: ~13× faster to first answer**, which matters more than throughput for
-anything short-lived. Throughput is around 4×, and the tail improves by a similar margin.
+Roughly **7× the throughput, 14× faster to first answer, and a third of the memory** for a native
+Rust caller. Startup is the largest win and matters most for anything short-lived. A Python caller
+keeps most of the speed while paying the interpreter's own memory cost.
 
-Raw numbers in [`bench/results.json`](bench/results.json); the full method, including what these
-figures cannot tell you, in [`bench/methodology.md`](bench/methodology.md). Reproduce with
+Raw numbers in [`bench/results.json`](bench/results.json) (measured on Windows, where RSS is `null` —
+see below); the full method, including what these figures cannot tell you, in
+[`bench/methodology.md`](bench/methodology.md). Reproduce with
 `python tools/bench.py --upstream ../price-parser`.
 
 ### How much to trust these
 
-Less than their precision suggests. The Python baseline is steady to about ±5%, but the Rust figures
-are noisier in relative terms simply because they are smaller — across repeated samples the native
-throughput swung between roughly 2.3× and 6.1× the baseline. **The two Rust paths cannot be told
-apart on this hardware**: the FFI overhead is real but smaller than the machine's jitter.
+Less than their precision suggests, and the two machines disagree. On a noisy Windows laptop the
+same benchmark gave 22 µs / 4.6 µs / 4.7 µs and could not distinguish the two Rust paths at all —
+the FFI overhead was smaller than the jitter. CI's quieter Linux runner separates them cleanly. Treat
+the ratios as sound and the absolute numbers as hardware-specific.
 
 Latency percentiles carry timer overhead of tens of nanoseconds against a parse of a few
 microseconds — about a percent, paid by both sides. Visible in the numbers, not dominating them, and
