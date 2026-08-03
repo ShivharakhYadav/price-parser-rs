@@ -76,8 +76,9 @@ that `ctypes` otherwise truncates to `c_int` — was necessary but not sufficien
 
 Rather than publish a number known to be wrong, the platform reports nothing.
 
-On Linux and macOS, `getrusage(RUSAGE_CHILDREN)` is reliable and a real figure is produced, so CI
-reports one.
+On Linux and macOS, `getrusage(RUSAGE_CHILDREN)` is reliable and produces a real figure. **CI runs
+this benchmark on Linux on every push** precisely so the one number the committed results cannot
+supply is still measured somewhere and visible in the job log.
 
 Neither implementation reads its own RSS from inside: doing that from Rust would mean an unsafe FFI
 call, and the zero-`unsafe` guarantee is worth more than a memory number.

@@ -114,6 +114,14 @@ jobs:
       - name: Differential fuzz against upstream
         run: .venv/bin/python tools/fuzz_diff.py --iterations 20000 --seed 20260803 --upstream upstream
 
+      # Peak RSS cannot be measured reliably on Windows, where the numbers in
+      # bench/results.json were produced, so it is recorded as null there. Linux
+      # has getrusage, so running the benchmark here produces the one figure the
+      # committed results are missing. Shortened rounds: the point is the memory
+      # number and a sanity check, not a precise timing on shared CI hardware.
+      - name: Benchmark (Linux gives the RSS figure Windows cannot)
+        run: .venv/bin/python tools/bench.py --upstream upstream --rounds 3 --repeats 20
+
   # Separate job: the Dockerfile promises "one command to a runnable artifact",
   # so that command is actually run rather than assumed to work. It builds from
   # a clean context with no toolchain of its own, which is the situation a judge

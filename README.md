@@ -203,7 +203,8 @@ a p99 quoted without saying so would be overclaiming.
 **Peak RSS is reported as unavailable on Windows, deliberately.** Two measurement approaches both
 returned a constant ~3.4 MiB regardless of workload; a child was made to allocate 200 MB and the
 figure did not move. Rather than publish a number known to be wrong, the platform reports nothing.
-Linux uses `getrusage`, which is reliable.
+CI runs the same benchmark on Linux, where `getrusage` is reliable, so the missing figure is measured
+there and visible in the job log.
 
 Two mistakes shaped this benchmark, both caught by numbers that made no sense. `maturin develop`
 defaults to a **debug** build, ~20× slower, which made the port look five times *slower* than Python
